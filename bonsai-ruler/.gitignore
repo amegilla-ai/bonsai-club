@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+# generated artifacts (regenerate with make_ruler.py / the test harness)
+*.svg
+*.png
+test_run/
+test_bwcol/
+swatches/
+# keep only the two B&W page PDFs (the halves to print + glue); ignore the rest
+ruler_colour*.pdf
+ruler_bw.pdf

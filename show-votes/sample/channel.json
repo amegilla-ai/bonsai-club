@@ -1,0 +1,31 @@
+{
+  "guild": { "id": "0", "name": "Sample Bonsai Club" },
+  "channel": { "id": "0", "type": "GuildPublicThread", "category": "shows", "name": "Sample Show Selection" },
+  "messages": [
+    {
+      "id": "1001",
+      "type": "Default",
+      "timestamp": "2026-01-01T10:00:00.000+00:00",
+      "content": "Juniper cascade, 17cm from pot lip, custom square pot",
+      "author": { "name": "alice", "nickname": "Alice" },
+      "attachments": [ { "id": "1", "url": "channel.json_Files/tree-juniper.jpg", "fileName": "tree-juniper.jpg", "fileSizeBytes": 12000 } ]
+    },
+    {
+      "id": "1002",
+      "type": "Default",
+      "timestamp": "2026-01-01T10:05:00.000+00:00",
+      "content": "Trident maple, H 22cm x W 30cm, glazed oval pot",
+      "author": { "name": "bob", "nickname": "Bob" },
+      "attachments": [ { "id": "2", "url": "channel.json_Files/tree-maple.jpg", "fileName": "tree-maple.jpg", "fileSizeBytes": 12000 } ]
+    },
+    {
+      "id": "1003",
+      "type": "Default",
+      "timestamp": "2026-01-01T10:10:00.000+00:00",
+      "content": "Japanese black pine, H 19cm, unglazed pot",
+      "author": { "name": "alice", "nickname": "Alice" },
+      "attachments": [ { "id": "3", "url": "channel.json_Files/tree-pine.jpg", "fileName": "tree-pine.jpg", "fileSizeBytes": 12000 } ]
+    }
+  ],
+  "messageCount": 3
+}

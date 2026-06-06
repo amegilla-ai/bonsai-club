@@ -1,0 +1,17 @@
+# secrets - never commit
+**/.env
+**/.token
+*.key
+
+# show-votes: runtime + private club data
+show-votes/votes.db
+show-votes/channel.json
+show-votes/channel.json_Files/
+show-votes/server.log
+
+# python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
