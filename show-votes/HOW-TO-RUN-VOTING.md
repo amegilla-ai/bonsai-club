@@ -60,6 +60,37 @@ passcode (sent separately). Turn it off when done:
 tailscale funnel --https=8443 off
 ```
 
+Closing the funnel only removes public access - the app keeps running locally and
+the votes are untouched. **Reopen any time** with the same `funnel --bg` command;
+the same URL and all data come back.
+
+### Auto-close after a set time (optional)
+A systemd timer can close the funnel for you so you don't forget. One-shot example
+(`~/.config/systemd/user/funnel-off.{service,timer}`):
+
+```ini
+# funnel-off.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/tailscale funnel --https=8443 off
+```
+```ini
+# funnel-off.timer
+[Timer]
+OnCalendar=2026-06-13 09:00:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now funnel-off.timer   # arm it
+systemctl --user list-timers funnel-off.timer    # check when it fires
+systemctl --user disable --now funnel-off.timer  # cancel it
+```
+`Persistent=true` runs the close on next boot if the machine was off at the set
+time. It fires once - reopening the funnel later stays open until you close it again.
+
 ---
 
 ## During the call
