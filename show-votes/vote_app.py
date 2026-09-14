@@ -2,16 +2,16 @@
 """Live show-selection voting for the Twickenham bonsai club.
 
 Parses the DiscordChatExporter channel.json in this folder, shows every
-submitted tree (photo + owner + description). Two roles:
+submitted tree (photo + owner + description).
 
-  Guests  - vote Definitely / Maybe / No. Live totals visible to all.
-  Host    - open with ?host=KEY to also mark each tree In / Out for the
-            show, sort by rating, and filter In / Out / undecided.
+Everyone who enters the passcode can vote Definitely / Maybe / No (live
+totals visible to all) and also mark each tree In / Out for the show, sort
+by rating, filter In / Out / undecided, export CSV/PDF, and moderate any
+comment. There is no separate host role.
 
 No dependencies - uses Python's built-in http.server. Run:
     python3 vote_app.py
-Share the plain Tailscale Funnel URL with guests; keep the ?host=KEY URL
-for yourself. The host key is printed on startup.
+Share the plain Tailscale Funnel URL with the club.
 """
 import csv
 import io
@@ -54,8 +54,7 @@ else:
 DB = HERE / "votes.db"
 PORT = int(os.environ.get("BONSAI_PORT", "8070"))
 # Secrets come from .env / environment so they never live in the public repo.
-# Set BONSAI_HOST_KEY and BONSAI_PASSCODE (see README / .env.example).
-HOST_KEY = os.environ.get("BONSAI_HOST_KEY", "changeme-host")
+# Set BONSAI_PASSCODE (see README / .env.example).
 PASSCODE = os.environ.get("BONSAI_PASSCODE", "changeme-pass")
 COOKIE = "bcpass"
 
@@ -100,6 +99,17 @@ def db():
     return con
 
 
+# Entries submitted by one member on another's behalf - override the owner
+# the Discord author would otherwise give. Keyed by message id.
+OWNER_OVERRIDE = {
+    "1509858526082891876": "Terry",
+    "1509858694488133643": "Terry",
+    "1509859011250491452": "Terry",
+    "1509601480502542357": "Donavan",  # Tina submitted on behalf of Donavan
+    "1509601719749705829": "Donavan",  # Tina submitted on behalf of Donavan
+}
+
+
 def load_entries():
     data = json.loads(CHANNEL.read_text())
     out = []
@@ -115,10 +125,11 @@ def load_entries():
         if not photos:
             continue
         a = m.get("author", {})
+        owner = a.get("nickname") or a.get("name") or "Unknown"
         out.append(
             {
                 "id": m["id"],
-                "owner": a.get("nickname") or a.get("name") or "Unknown",
+                "owner": OWNER_OVERRIDE.get(m["id"], owner),
                 "text": (m.get("content") or fwd.get("content") or "").strip(),
                 "photos": photos,
             }
@@ -218,13 +229,13 @@ PAGE = r"""<!doctype html><html><head><meta charset=utf-8>
 <div class=grid id=grid></div>
 <div id=summary></div>
 <div id=exportrow style="display:none;padding:18px 16px 40px;text-align:center">
- <button onclick="location.href='/export.csv?host=__HOSTKEY__'" style="padding:12px 22px;font-size:16px;border:1px solid #2c5f2d;border-radius:6px;background:#2c5f2d;color:#fff;cursor:pointer">Export results CSV</button>
- <button onclick="location.href='/selected.pdf?host=__HOSTKEY__'" style="padding:12px 22px;font-size:16px;border:1px solid #2c5f2d;border-radius:6px;background:#fff;color:#2c5f2d;cursor:pointer;margin-left:10px">Selected trees PDF</button>
+ <button onclick="location.href='/export.csv'" style="padding:12px 22px;font-size:16px;border:1px solid #2c5f2d;border-radius:6px;background:#2c5f2d;color:#fff;cursor:pointer">Export results CSV</button>
+ <button onclick="location.href='/selected.pdf'" style="padding:12px 22px;font-size:16px;border:1px solid #2c5f2d;border-radius:6px;background:#fff;color:#2c5f2d;cursor:pointer;margin-left:10px">Selected trees PDF</button>
 </div>
 <div id=lb onclick="this.style.display='none'"><img id=lbimg></div>
 <script>
 const entries = __ENTRIES__;
-const HOST = new URLSearchParams(location.search).get('host') === '__HOSTKEY__';
+const HOST = true;  // all unlocked users have host actions
 let voter = localStorage.getItem('voter')||'';
 let sortByRating = true, filter='all', owner='', state={tallies:{},decisions:{}};
 const vin=document.getElementById('voter'); vin.value=voter;
@@ -304,7 +315,7 @@ async function addComment(eid,inp){
  await fetch('/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({author:voter,entry_id:eid,body:text})});
  refresh(true);
 }
-const HQ = HOST ? '?host='+encodeURIComponent(new URLSearchParams(location.search).get('host')) : '';
+const HQ = '';
 async function editComment(c){
  const t=prompt('Edit comment:',c.body); if(t===null)return;
  const text=t.trim(); if(!text)return;
@@ -326,7 +337,7 @@ async function vote(id,choice){
 }
 async function decide(id,decision,current){
  const send = (current===decision) ? 'none' : decision;
- await fetch('/decide?host='+encodeURIComponent('__HOSTKEY__'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry_id:id,decision:send})});
+ await fetch('/decide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry_id:id,decision:send})});
  refresh(true);
 }
 function typing(){const a=document.activeElement;return a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA')&&a.id!=='voter';}
@@ -396,18 +407,13 @@ class H(BaseHTTPRequestHandler):
         if not self.unlocked():
             return self._send(200, GATE, "text/html; charset=utf-8")
         if u.path == "/":
-            page = (
-                PAGE.replace("__ENTRIES__", json.dumps(ENTRIES))
-                .replace("__HOSTKEY__", HOST_KEY)
-            )
+            page = PAGE.replace("__ENTRIES__", json.dumps(ENTRIES))
             return self._send(200, page, "text/html; charset=utf-8")
         if u.path == "/state":
             return self._send(200, json.dumps(tallies()))
         if u.path == "/results":
             return self._send(200, results_text(), "text/plain; charset=utf-8")
         if u.path == "/export.csv":
-            if parse_qs(u.query).get("host", [""])[0] != HOST_KEY:
-                return self._send(403, "forbidden", "text/plain")
             body = export_csv().encode("utf-8-sig")
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
@@ -420,8 +426,6 @@ class H(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if u.path == "/selected.pdf":
-            if parse_qs(u.query).get("host", [""])[0] != HOST_KEY:
-                return self._send(403, "forbidden", "text/plain")
             body = selected_pdf()
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
@@ -491,8 +495,6 @@ class H(BaseHTTPRequestHandler):
                 con.close()
             return self._send(200, '{"ok":true}')
         if u.path == "/decide":
-            if parse_qs(u.query).get("host", [""])[0] != HOST_KEY:
-                return self._send(403, '{"ok":false}')
             eid = str(body.get("entry_id"))
             dec = body.get("decision")
             if dec not in ("in", "out", "none"):
@@ -526,7 +528,7 @@ class H(BaseHTTPRequestHandler):
                 con.close()
             return self._send(200, '{"ok":true}')
         if u.path == "/comment/edit":
-            host = parse_qs(u.query).get("host", [""])[0] == HOST_KEY
+            host = True  # all unlocked users can moderate comments
             cid = body.get("id")
             who = (body.get("author") or "").strip()[:40]
             text = (body.get("body") or "").strip()[:1000]
@@ -548,7 +550,7 @@ class H(BaseHTTPRequestHandler):
                 con.close()
             return self._send(200, '{"ok":true}')
         if u.path == "/comment/delete":
-            host = parse_qs(u.query).get("host", [""])[0] == HOST_KEY
+            host = True  # all unlocked users can moderate comments
             cid = body.get("id")
             who = (body.get("author") or "").strip()[:40]
             if not isinstance(cid, int):
@@ -722,8 +724,7 @@ def selected_pdf():
 if __name__ == "__main__":
     db().close()
     print(f"Loaded {len(ENTRIES)} entries")
-    print(f"Guest URL:  http://<your-funnel-host>/")
-    print(f"Host URL:   http://<your-funnel-host>/?host={HOST_KEY}")
+    print(f"URL:        http://<your-funnel-host>/")
     print(f"Live text results: /results")
     print(f"Serving on 0.0.0.0:{PORT}")
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
